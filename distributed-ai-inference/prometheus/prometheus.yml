@@ -1,0 +1,17 @@
+global:
+  scrape_interval: 5s
+  evaluation_interval: 15s
+
+scrape_configs:
+  # Scrape each replica directly (not through nginx) so every replica has its own time series.
+  - job_name: inference-api
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["api1:8000"]
+        labels: {replica: api1}
+      - targets: ["api2:8000"]
+        labels: {replica: api2}
+
+  - job_name: prometheus
+    static_configs:
+      - targets: ["localhost:9090"]

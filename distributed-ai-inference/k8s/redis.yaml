@@ -1,0 +1,44 @@
+# LOCAL DEMO ONLY: a single Redis pod, no persistence, no replication, no auth.
+# Not a highly available Redis. For real use consider a managed Redis or Redis Sentinel/Cluster + auth + TLS.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: redis
+  namespace: inference
+  labels: {app: redis}
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app: redis}
+  template:
+    metadata:
+      labels: {app: redis}
+    spec:
+      containers:
+        - name: redis
+          image: redis:7.4-alpine
+          args: ["redis-server", "--save", "", "--appendonly", "no", "--maxmemory", "128mb", "--maxmemory-policy", "allkeys-lru"]
+          ports:
+            - containerPort: 6379
+          resources:
+            requests: {cpu: 50m, memory: 64Mi}
+            limits: {cpu: 250m, memory: 192Mi}
+          readinessProbe:
+            exec: {command: ["redis-cli", "ping"]}
+            initialDelaySeconds: 2
+            periodSeconds: 5
+          livenessProbe:
+            exec: {command: ["redis-cli", "ping"]}
+            initialDelaySeconds: 10
+            periodSeconds: 10
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis
+  namespace: inference
+spec:
+  selector: {app: redis}
+  ports:
+    - port: 6379
+      targetPort: 6379

@@ -1,0 +1,12 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: inference-api
+  namespace: inference
+spec:
+  type: ClusterIP
+  selector: {app: inference-api}
+  ports:
+    - name: http
+      port: 80
+      targetPort: http

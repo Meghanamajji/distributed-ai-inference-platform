@@ -1,0 +1,52 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: inference-api
+  namespace: inference
+  labels: {app: inference-api}
+spec:
+  replicas: 2
+  selector:
+    matchLabels: {app: inference-api}
+  strategy:
+    type: RollingUpdate
+    rollingUpdate: {maxUnavailable: 0, maxSurge: 1}
+  template:
+    metadata:
+      labels: {app: inference-api}
+      annotations:
+        # Only used if your cluster's Prometheus is configured for annotation-based discovery.
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8000"
+        prometheus.io/path: "/metrics"
+    spec:
+      containers:
+        - name: api
+          image: distributed-ai-inference:local   # build locally; see README "Kubernetes" for loading it into your cluster
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8000
+          envFrom:
+            - configMapRef: {name: inference-config}
+          env:
+            - name: INSTANCE_NAME
+              valueFrom:
+                fieldRef: {fieldPath: metadata.name}   # pod name => shows which pod served a request
+          resources:
+            requests: {cpu: 250m, memory: 512Mi}
+            limits: {cpu: "1", memory: 1Gi}
+          startupProbe:                      # gives PyTorch time to import/load before other probes begin
+            httpGet: {path: /health, port: http}
+            periodSeconds: 2
+            failureThreshold: 30
+          readinessProbe:                    # failing => pod removed from Service endpoints (no traffic)
+            httpGet: {path: /ready, port: http}
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 3
+          livenessProbe:                     # failing => container restarted
+            httpGet: {path: /health, port: http}
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3

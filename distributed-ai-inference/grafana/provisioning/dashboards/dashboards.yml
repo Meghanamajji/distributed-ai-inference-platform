@@ -1,0 +1,10 @@
+apiVersion: 1
+providers:
+  - name: inference-dashboards
+    orgId: 1
+    folder: Inference Platform
+    type: file
+    disableDeletion: false
+    allowUiUpdates: true
+    options:
+      path: /var/lib/grafana/dashboards

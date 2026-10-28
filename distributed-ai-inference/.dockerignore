@@ -1,0 +1,11 @@
+.git
+.venv
+__pycache__
+*.pyc
+.pytest_cache
+.env
+results
+tests
+docs
+k8s
+model/artifacts/*.pt

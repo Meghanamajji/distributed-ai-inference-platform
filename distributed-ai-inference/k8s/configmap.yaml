@@ -1,0 +1,21 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: inference-config
+  namespace: inference
+data:
+  LOG_LEVEL: "INFO"
+  REDIS_URL: "redis://redis:6379/0"      # 'redis' = the Redis Service name (cluster DNS)
+  CACHE_ENABLED: "true"
+  CACHE_TTL_SECONDS: "300"
+  CACHE_NAMESPACE: "infer"
+  CACHE_FAILURE_POLICY: "bypass"
+  CACHE_RETRY_AFTER_SECONDS: "5"
+  REDIS_TIMEOUT_SECONDS: "0.25"
+  REDIS_MAX_CONNECTIONS: "64"
+  INFERENCE_THREADS: "2"
+  TORCH_NUM_THREADS: "1"
+  INFERENCE_TIMEOUT_SECONDS: "2.0"
+  MAX_PENDING_INFERENCES: "256"
+  EXTRA_FORWARD_PASSES: "0"
+  UVICORN_WORKERS: "1"

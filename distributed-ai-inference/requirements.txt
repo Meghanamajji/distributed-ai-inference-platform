@@ -1,0 +1,11 @@
+# Runtime dependencies (pinned). Tested-for-compatibility target: Python 3.12.
+# NOTE: On Windows, `pip install torch` from PyPI gives the CPU build.
+#       On Linux (Docker) the Dockerfile installs the CPU-only wheel first to keep the image small.
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+pydantic==2.10.4
+pydantic-settings==2.7.0
+redis==5.2.1
+prometheus-client==0.21.1
+httpx==0.28.1
+torch==2.5.1

@@ -1,0 +1,117 @@
+# Local multi-service stack:  nginx -> (api1, api2) -> redis ; prometheus scrapes api1/api2 ; grafana reads prometheus.
+# Settings come from your shell or a local .env file (see .env.example); defaults below keep it runnable without one.
+name: distributed-ai-inference
+
+x-api: &api
+  build:
+    context: .
+    dockerfile: Dockerfile
+  image: distributed-ai-inference:local
+  restart: unless-stopped
+  networks: [inference-net]
+  depends_on:
+    redis:
+      condition: service_healthy
+  healthcheck:
+    # /ready checks the model AND (per failure policy) Redis, so "healthy" means "able to serve".
+    test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/ready', timeout=3)"]
+    interval: 10s
+    timeout: 5s
+    retries: 5
+    start_period: 20s
+  environment: &api-env
+    REDIS_URL: redis://redis:6379/0
+    LOG_LEVEL: ${LOG_LEVEL:-INFO}
+    CACHE_ENABLED: ${CACHE_ENABLED:-true}
+    CACHE_TTL_SECONDS: ${CACHE_TTL_SECONDS:-300}
+    CACHE_NAMESPACE: ${CACHE_NAMESPACE:-infer}
+    CACHE_FAILURE_POLICY: ${CACHE_FAILURE_POLICY:-bypass}
+    CACHE_RETRY_AFTER_SECONDS: ${CACHE_RETRY_AFTER_SECONDS:-5}
+    REDIS_TIMEOUT_SECONDS: ${REDIS_TIMEOUT_SECONDS:-0.25}
+    REDIS_MAX_CONNECTIONS: ${REDIS_MAX_CONNECTIONS:-64}
+    INFERENCE_THREADS: ${INFERENCE_THREADS:-2}
+    TORCH_NUM_THREADS: ${TORCH_NUM_THREADS:-1}
+    INFERENCE_TIMEOUT_SECONDS: ${INFERENCE_TIMEOUT_SECONDS:-2.0}
+    MAX_PENDING_INFERENCES: ${MAX_PENDING_INFERENCES:-256}
+    EXTRA_FORWARD_PASSES: ${EXTRA_FORWARD_PASSES:-0}
+    UVICORN_WORKERS: ${UVICORN_WORKERS:-1}
+
+services:
+  api1:
+    <<: *api
+    environment:
+      <<: *api-env
+      INSTANCE_NAME: api1
+    ports: ["127.0.0.1:8001:8000"]   # direct access to replica 1 (debugging, benchmarks, per-replica metrics)
+
+  api2:
+    <<: *api
+    environment:
+      <<: *api-env
+      INSTANCE_NAME: api2
+    ports: ["127.0.0.1:8002:8000"]
+
+  nginx:
+    image: nginx:1.27-alpine
+    restart: unless-stopped
+    networks: [inference-net]
+    ports: ["127.0.0.1:8080:80"]     # the public entry point
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      api1: {condition: service_healthy}
+      api2: {condition: service_healthy}
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1/nginx-health"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  redis:
+    image: redis:7.4-alpine
+    restart: unless-stopped
+    networks: [inference-net]
+    # Pure cache: no persistence, bounded memory, evict least-recently-used keys when full.
+    command: ["redis-server", "--save", "", "--appendonly", "no", "--maxmemory", "256mb", "--maxmemory-policy", "allkeys-lru"]
+    ports: ["127.0.0.1:6379:6379"]   # exposed to localhost only, so benchmark scripts can flush test keys
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  prometheus:
+    image: prom/prometheus:v2.55.1
+    restart: unless-stopped
+    networks: [inference-net]
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=7d
+    ports: ["127.0.0.1:9090:9090"]
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    depends_on: [api1, api2]
+
+  grafana:
+    image: grafana/grafana:11.4.0
+    restart: unless-stopped
+    networks: [inference-net]
+    ports: ["127.0.0.1:3000:3000"]
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+    depends_on: [prometheus]
+
+networks:
+  inference-net:
+
+volumes:
+  prometheus_data:
+  grafana_data:
